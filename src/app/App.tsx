@@ -287,7 +287,7 @@ export default function App() {
                         ))}
                     </div>
                 </nav>
-                <ChatWidget />
+                <ChatWidget/>
                 <Toaster position="top-right" richColors />
             </div>
         </div>
