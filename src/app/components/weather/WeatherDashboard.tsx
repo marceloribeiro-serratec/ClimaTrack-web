@@ -1,4 +1,5 @@
-import { Clock, Droplets, Gauge, Wind, Thermometer, CloudRain } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Clock, Droplets, Gauge, Wind, Thermometer, CloudRain, TriangleAlert, X } from "lucide-react";
 import { WeatherSearchForm } from "./WeatherSearchForm";
 import { CurrentWeatherCard } from "./CurrentWeatherCard";
 import { WeatherInfoCard } from "./WeatherInfoCard";
@@ -11,6 +12,34 @@ import type { GeocodingCity } from "../../types/geocoding";
 import type { WeatherError, WeatherViewModel } from "../../types/weather";
 import { type TemperatureUnit, formatTemperature, formatTemperatureLabel } from "../../utils/formatTemperature";
 import { formatWeatherCode } from "../../utils/formatWeatherCode";
+
+const N8N_WEBHOOK_URL = "http://localhost:5678/webhook/alerta-clima";
+
+async function verificarAlertaClima(
+    cidade: string,
+    temperatura: number,
+    condicao: string,
+    vento: number,
+    umidade: number,
+    precipitacao: number
+) {
+    try {
+        const response = await fetch(N8N_WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cidade, temperatura, condicao, vento, umidade, precipitacao }),
+        });
+        const text = await response.text();
+        if (!text || text.trim() === "") return { alerta: false, mensagem: "" };
+        const alertaMatch = text.match(/"alerta"\s*:\s*(true|false)/);
+        const mensagemMatch = text.match(/"mensagem"\s*:\s*"([\s\S]*?)(?:"\s*[,}]|"$)/);
+        const alerta = alertaMatch?.[1] === "true";
+        const mensagem = mensagemMatch?.[1]?.replace(/\\n/g, "\n") ?? "";
+        return { alerta, mensagem };
+    } catch {
+        return { alerta: false, mensagem: "" };
+    }
+}
 
 export function WeatherDashboard({
     weather,
@@ -30,6 +59,34 @@ export function WeatherDashboard({
     onToggleFavorite: (city: GeocodingCity) => void;
 }) {
     const current = weather?.forecast.current;
+    const [alertMessage, setAlertMessage] = useState<string | null>(null);
+    const [alertVisible, setAlertVisible] = useState(false);
+    const [alertCheckedFor, setAlertCheckedFor] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!weather || !current) return;
+
+        const cidade = weather.location.name;
+        const temperatura = current.temperature_2m;
+        const condicao = current.weather_code.toString();
+        const vento = current.wind_speed_10m;
+        const umidade = current.relative_humidity_2m;
+        const precipitacao = current.precipitation;
+
+        const chave = `${cidade}-${temperatura}-${vento}-${umidade}-${precipitacao}`;
+
+        if (alertCheckedFor === chave) return;
+        setAlertCheckedFor(chave);
+        setAlertMessage(null);
+        setAlertVisible(false);
+
+        verificarAlertaClima(cidade, temperatura, condicao, vento, umidade, precipitacao).then((resultado) => {
+            if (resultado.alerta && resultado.mensagem) {
+                setAlertMessage(resultado.mensagem);
+                setAlertVisible(true);
+            }
+        });
+    }, [weather]);
 
     return (
         <div className="space-y-5">
@@ -62,6 +119,33 @@ export function WeatherDashboard({
                         isFavorite={isFavorite(weather.location)}
                         onToggleFavorite={() => onToggleFavorite(weather.location)}
                     />
+
+                    {alertVisible && alertMessage && (
+                        <div className="relative rounded-2xl border border-orange-200 bg-orange-50 dark:border-orange-900/60 dark:bg-orange-950/30 p-4 flex gap-3 items-start">
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-orange-100 dark:bg-orange-900/50">
+                                <TriangleAlert size={16} className="text-orange-600 dark:text-orange-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-orange-800 dark:text-orange-300 mb-0.5">
+                                    Alerta de condição extrema
+                                </p>
+                                <p className="text-sm text-orange-700 dark:text-orange-400 leading-relaxed">
+                                    {alertMessage}
+                                </p>
+                                <p className="text-xs text-orange-500 dark:text-orange-500 mt-1.5">
+                                    Gerado por IA via n8n
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setAlertVisible(false)}
+                                className="shrink-0 text-orange-400 hover:text-orange-600 dark:hover:text-orange-300 transition-colors"
+                                aria-label="Fechar alerta"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <WeatherInfoCard
