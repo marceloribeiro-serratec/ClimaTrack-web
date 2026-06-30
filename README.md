@@ -87,6 +87,7 @@ Crie um arquivo `.env` na raiz do projeto com:
 ```bash
 VITE_N8N_WEBHOOK_URL=https://sua-url-do-n8n/webhook
 VITE_N8N_ALERT_WEBHOOK_URL=https://sua-url-do-n8n/webhook-alert
+VITE_N8N_TIP_WEBHOOK_URL=https://sua-url-do-n8n/webhook-dica
 ```
 
 ## Dados utilizados
