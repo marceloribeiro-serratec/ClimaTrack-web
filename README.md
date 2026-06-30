@@ -135,6 +135,10 @@ Essa validação melhora a experiência do usuário e evita chamadas desnecessá
 
 ---
 
+```bash
+VITE_N8N_WEBHOOK_URL=https://sua-url-do-n8n/webhook
+VITE_N8N_ALERT_WEBHOOK_URL=https://sua-url-do-n8n/webhook-alert
+VITE_N8N_TIP_WEBHOOK_URL=https://sua-url-do-n8n/webhook-dica
 ### 5. Criação do chatbot
 
 Depois da aplicação principal estar estruturada, foi criada a funcionalidade de chatbot.

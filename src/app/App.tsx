@@ -51,6 +51,54 @@ export default function App() {
     const { email, alertsEnabled, lastAlertDateByCity, cities, setEmail, setEnabled, updateLastAlertDate, addCity, removeCity } = useAlerts();
     const { chatId, setChatId, loadingAlerta, ativarAlertaDiario } = useTelegramAlerts({ weather });
 
+    // Estados mantidos para o Alerta Diário do Telegram (n8n)
+    const [chatId, setChatId] = useState("");
+    const [loadingAlerta, setLoadingAlerta] = useState(false);
+
+    // Função mantida para disparar os dados para o seu nó Webhook do n8n
+    async function ativarAlertaDiario(e: React.FormEvent) {
+        e.preventDefault();
+
+        if (!chatId.trim()) {
+            toast.error("Por favor, digite um Chat ID válido.");
+            return;
+        }
+
+        const lat = weather?.location?.latitude?.toString() || "-22.4167";
+        const lon = weather?.location?.longitude?.toString() || "-42.9782";
+        const cidadeNome = weather?.location?.name || "Sua Cidade";
+
+        setLoadingAlerta(true);
+        const webhookUrl = "http://localhost:5678/webhook-test/cadastrar-alerta";
+
+        try {
+            const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    chatId: chatId.trim(),
+                    latitude: lat,
+                    longitude: lon,
+                    cidade: cidadeNome,
+                }),
+            });
+
+            if (response.ok) {
+                toast.success(`🚀 Alerta ativado para ${cidadeNome}! Mensagem diária às 8h.`);
+                setChatId("");
+            } else {
+                toast.error("Falha ao salvar no servidor de alertas.");
+            }
+        } catch (erro) {
+            console.error("Erro ao enviar dados para o n8n:", erro);
+            toast.error("Erro de conexão com o servidor do Alerta.");
+        } finally {
+            setLoadingAlerta(false);
+        }
+    }
+
     async function handleSearch(city: string) {
         try {
             const result = await searchByName(city);

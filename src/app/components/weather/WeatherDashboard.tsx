@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, Droplets, Gauge, Wind, Thermometer, CloudRain, TriangleAlert, X } from "lucide-react";
+import { Clock, Droplets, Gauge, Wind, Thermometer, CloudRain, TriangleAlert, X, Sparkles } from "lucide-react";
 import { WeatherSearchForm } from "./WeatherSearchForm";
 import { CurrentWeatherCard } from "./CurrentWeatherCard";
 import { WeatherInfoCard } from "./WeatherInfoCard";
@@ -38,6 +38,34 @@ async function verificarAlertaClima(
         return { alerta, mensagem };
     } catch {
         return { alerta: false, mensagem: "" };
+    }
+}
+
+const N8N_TIP_WEBHOOK_URL = import.meta.env.VITE_N8N_TIP_WEBHOOK_URL || "http://localhost:5678/webhook/dica-ia";
+
+async function buscarDicaDaIA(
+    cidade: string,
+    temperatura: number,
+    condicao: string,
+    umidade: number
+) {
+    try {
+        const response = await fetch(N8N_TIP_WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event: "daily_tip", city: cidade, temperature: temperatura, condition: condicao, humidity: umidade }),
+        });
+        const text = await response.text();
+        if (!text || text.trim() === "") return "";
+        // Tentamos extrair da resposta, ou usamos o texto puro retornado.
+        try {
+            const json = JSON.parse(text);
+            return json.dica || text;
+        } catch {
+            return text;
+        }
+    } catch {
+        return "";
     }
 }
 
@@ -87,6 +115,34 @@ export function WeatherDashboard({
             }
         });
     }, [weather]);
+
+    const [tipMessage, setTipMessage] = useState<string | null>(null);
+    const [tipVisible, setTipVisible] = useState(false);
+    const [tipCheckedFor, setTipCheckedFor] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!weather || !current) return;
+
+        const cidade = weather.location.name;
+        const temperatura = current.temperature_2m;
+        const condicao = current.weather_code.toString();
+        const umidade = current.relative_humidity_2m;
+
+        const chave = `${cidade}-${temperatura}-${umidade}`;
+
+        if (tipCheckedFor === chave) return;
+        setTipCheckedFor(chave);
+        setTipMessage(null);
+        setTipVisible(false);
+
+        // Fetching the AI Tip
+        buscarDicaDaIA(cidade, temperatura, condicao, umidade).then((dica) => {
+            if (dica && dica.trim() !== "") {
+                setTipMessage(dica.trim());
+                setTipVisible(true);
+            }
+        });
+    }, [weather, current, tipCheckedFor]);
 
     return (
         <div className="space-y-5">
@@ -147,7 +203,31 @@ export function WeatherDashboard({
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {tipVisible && tipMessage && (
+                        <div className="relative rounded-2xl border border-indigo-200 bg-indigo-50 dark:border-indigo-900/60 dark:bg-indigo-950/30 p-4 flex gap-3 items-start mt-4">
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-900/50">
+                                <Sparkles size={16} className="text-indigo-600 dark:text-indigo-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300 mb-0.5">
+                                    Dica da IA
+                                </p>
+                                <p className="text-sm text-indigo-700 dark:text-indigo-400 leading-relaxed">
+                                    {tipMessage}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setTipVisible(false)}
+                                className="shrink-0 text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                                aria-label="Fechar dica"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
                         <WeatherInfoCard
                             icon={<Droplets size={18} className="text-blue-500" />}
                             label="Umidade"
