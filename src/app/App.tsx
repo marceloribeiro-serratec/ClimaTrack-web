@@ -20,6 +20,7 @@ import { useTemperatureUnit } from "./hooks/useTemperatureUnit";
 import { useFavorites } from "./hooks/useFavorites";
 import { useSearchHistory } from "./hooks/useSearchHistory";
 import { useAlerts } from "./hooks/useAlerts";
+import { useTelegramAlerts } from "./hooks/useTelegramAlerts";
 import { sendWeatherAlert } from "./services/alert-service";
 import { Switch } from "./components/ui/switch";
 import { Input } from "./components/ui/input";
@@ -48,54 +49,7 @@ export default function App() {
     const { history, addSearch, clearHistory, removeSearch } = useSearchHistory();
     const { weather, loading, error, searchByName, searchByCity } = useWeather();
     const { email, alertsEnabled, lastAlertDateByCity, cities, setEmail, setEnabled, updateLastAlertDate, addCity, removeCity } = useAlerts();
-
-    // Estados mantidos para o Alerta Diário do Telegram (n8n)
-    const [chatId, setChatId] = useState("");
-    const [loadingAlerta, setLoadingAlerta] = useState(false);
-
-    // Função mantida para disparar os dados para o seu nó Webhook do n8n
-    async function ativarAlertaDiario(e: React.FormEvent) {
-        e.preventDefault();
-
-        if (!chatId.trim()) {
-            toast.error("Por favor, digite um Chat ID válido.");
-            return;
-        }
-
-        const lat = weather?.location?.latitude?.toString() || "-22.4167";
-        const lon = weather?.location?.longitude?.toString() || "-42.9782";
-        const cidadeNome = weather?.location?.name || "Sua Cidade";
-
-        setLoadingAlerta(true);
-        const webhookUrl = "http://localhost:5678/webhook-test/cadastrar-alerta";
-
-        try {
-            const response = await fetch(webhookUrl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    chatId: chatId.trim(),
-                    latitude: lat,
-                    longitude: lon,
-                    cidade: cidadeNome,
-                }),
-            });
-
-            if (response.ok) {
-                toast.success(`🚀 Alerta ativado para ${cidadeNome}! Mensagem diária às 8h.`);
-                setChatId("");
-            } else {
-                toast.error("Falha ao salvar no servidor de alertas.");
-            }
-        } catch (erro) {
-            console.error("Erro ao enviar dados para o n8n:", erro);
-            toast.error("Erro de conexão com o servidor do Alerta.");
-        } finally {
-            setLoadingAlerta(false);
-        }
-    }
+    const { chatId, setChatId, loadingAlerta, ativarAlertaDiario } = useTelegramAlerts({ weather });
 
     async function handleSearch(city: string) {
         try {
@@ -103,7 +57,7 @@ export default function App() {
             addSearch(result);
             setScreen(DEFAULT_SCREEN);
         } catch {
-            // O estado de erro já é tratado pelo hook.
+            // erro tratado pelo hook.
         }
     }
 
@@ -113,7 +67,7 @@ export default function App() {
             addSearch(result);
             setScreen(DEFAULT_SCREEN);
         } catch {
-            // O estado de erro já é tratado pelo hook.
+            //erro tratado pelo hook.
         }
     }
 
@@ -209,8 +163,8 @@ export default function App() {
                                     key={item.id}
                                     onClick={() => setScreen(item.id)}
                                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${screen === item.id
-                                            ? "bg-primary text-primary-foreground shadow-sm"
-                                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                         }`}
                                 >
                                     {item.icon}
@@ -295,8 +249,8 @@ export default function App() {
                                                 key={value}
                                                 onClick={() => setUnit(value)}
                                                 className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-150 ${unit === value
-                                                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                                        : "bg-card text-foreground border-border hover:border-primary/40"
+                                                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                                    : "bg-card text-foreground border-border hover:border-primary/40"
                                                     }`}
                                                 style={{ fontFamily: APP_MONO_FONT_FAMILY }}
                                             >
@@ -307,7 +261,6 @@ export default function App() {
                                 </div>
                             </SettingsSection>
 
-                            {/* SEÇÃO INTEGRADA: Notificações diárias do Telegram (n8n) */}
                             <SettingsSection title="Notificações diárias">
                                 <div className="p-4 space-y-3">
                                     <div className="flex items-start gap-3">
@@ -364,7 +317,6 @@ export default function App() {
                                 </div>
                             </SettingsSection>
 
-                            {/* SEÇÃO INTACTA: Alertas Climáticos Críticos por E-mail */}
                             <SettingsSection title="Alertas Climáticos">
                                 <SettingsRow
                                     label="Ativar Alertas"
@@ -502,8 +454,8 @@ export default function App() {
                                 key={item.id}
                                 onClick={() => setScreen(item.id)}
                                 className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150 min-w-0 ${screen === item.id
-                                        ? "text-primary"
-                                        : "text-muted-foreground"
+                                    ? "text-primary"
+                                    : "text-muted-foreground"
                                     }`}
                             >
                                 {item.icon}
