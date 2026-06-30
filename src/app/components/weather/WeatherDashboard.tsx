@@ -13,7 +13,7 @@ import type { WeatherError, WeatherViewModel } from "../../types/weather";
 import { type TemperatureUnit, formatTemperature, formatTemperatureLabel } from "../../utils/formatTemperature";
 import { formatWeatherCode } from "../../utils/formatWeatherCode";
 
-const N8N_WEBHOOK_URL = "http://localhost:5678/webhook/alerta-clima";
+const N8N_WEBHOOK_URL = "https://nicolasscarvalhoo.app.n8n.cloud/webhook/alerta-clima";
 
 async function verificarAlertaClima(
     cidade: string,
