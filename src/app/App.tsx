@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Clock, LayoutDashboard, Settings2, Star, Trash2, Moon, Sun } from "lucide-react";
+import { useState, useEffect, type ReactNode } from "react";
+import { Clock, LayoutDashboard, Settings2, Star, Trash2, Moon, Sun, Bell } from "lucide-react";
 import {
     APP_FONT_FAMILY,
     APP_MONO_FONT_FAMILY,
@@ -19,6 +19,10 @@ import { useTheme } from "./hooks/useTheme";
 import { useTemperatureUnit } from "./hooks/useTemperatureUnit";
 import { useFavorites } from "./hooks/useFavorites";
 import { useSearchHistory } from "./hooks/useSearchHistory";
+import { useAlerts } from "./hooks/useAlerts";
+import { sendWeatherAlert } from "./services/alert-service";
+import { Switch } from "./components/ui/switch";
+import { Input } from "./components/ui/input";
 import type { GeocodingCity } from "./types/geocoding";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
@@ -43,6 +47,7 @@ export default function App() {
         useFavorites();
     const { history, addSearch, clearHistory, removeSearch } = useSearchHistory();
     const { weather, loading, error, searchByName, searchByCity } = useWeather();
+    const { email, alertsEnabled, lastAlertDateByCity, cities, setEmail, setEnabled, updateLastAlertDate, addCity, removeCity } = useAlerts();
 
     async function handleSearch(city: string) {
         try {
@@ -63,6 +68,54 @@ export default function App() {
             // O estado de erro já é tratado pelo hook.
         }
     }
+
+    useEffect(() => {
+        if (!weather || !alertsEnabled || !email) return;
+
+        const currentHumidity = weather.forecast.current.relative_humidity_2m;
+        const currentTemp = weather.forecast.current.temperature_2m;
+        const today = new Date().toISOString().split("T")[0];
+        const currentCityName = weather.location.name;
+
+        // Verifica se a cidade atual esta na lista de cidades para alerta (se houver alguma cadastrada)
+        if (cities.length > 0 && !cities.includes(currentCityName)) return;
+
+        // Se ja mandou alerta hoje para esta cidade, ignora
+        if (lastAlertDateByCity[currentCityName] === today) return;
+
+        let reason: "high_temperature" | "low_temperature" | "high_humidity" | "rain" | null = null;
+
+        const currentCode = weather.forecast.current.weather_code;
+        const isRainingNow = currentCode >= 51 && currentCode <= 99;
+
+        if (currentTemp >= 35) {
+            reason = "high_temperature";
+        } else if (currentTemp <= 10) {
+            reason = "low_temperature";
+        } else if (isRainingNow) {
+            reason = "rain";
+        } else if (currentHumidity >= 80) {
+            reason = "high_humidity";
+        }
+
+        if (reason) {
+            import('./utils/formatWeatherCode').then(({ formatWeatherCode }) => {
+                sendWeatherAlert({
+                    event: "weather_alert",
+                    email,
+                    city: weather.location.name,
+                    reason,
+                    weather: {
+                        temperature: currentTemp,
+                        humidity: currentHumidity,
+                        description: formatWeatherCode(weather.forecast.current.weather_code).label,
+                    }
+                });
+            });
+            updateLastAlertDate(currentCityName);
+            toast.info(`Alerta de clima crítico enviado para ${email}`);
+        }
+    }, [weather, alertsEnabled, email, cities, lastAlertDateByCity, updateLastAlertDate]);
 
     function handleToggleFavorite(city: GeocodingCity) {
         const alreadyFavorite = isFavorite(city);
@@ -209,6 +262,80 @@ export default function App() {
                                         ))}
                                     </div>
                                 </div>
+                            </SettingsSection>
+
+                            <SettingsSection title="Alertas Climáticos">
+                                <SettingsRow
+                                    label="Ativar Alertas"
+                                    description="Receba avisos por e-mail sobre clima extremo"
+                                    icon={<Bell size={16} className="text-blue-500" />}
+                                >
+                                    <Switch checked={alertsEnabled} onCheckedChange={setEnabled} />
+                                </SettingsRow>
+                                {alertsEnabled && (
+                                    <div className="px-4 pb-4 pt-2">
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-xs font-medium text-foreground">
+                                                E-mail para alertas
+                                            </label>
+                                            <Input 
+                                                type="email" 
+                                                placeholder="seu@email.com" 
+                                                value={email} 
+                                                onChange={(e) => setEmail(e.target.value)}
+                                                className="h-9 text-sm"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5 mt-4">
+                                            <label className="text-xs font-medium text-foreground">
+                                                Cidades para Alerta (máx 3)
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <Input 
+                                                    id="new-city-alert"
+                                                    placeholder="Digite o nome da cidade" 
+                                                    className="h-9 text-sm flex-1"
+                                                    disabled={cities.length >= 3}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const val = e.currentTarget.value.trim();
+                                                            if (val) {
+                                                                addCity(val);
+                                                                e.currentTarget.value = "";
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+                                                <button 
+                                                    onClick={() => {
+                                                        const input = document.getElementById('new-city-alert') as HTMLInputElement;
+                                                        if (input && input.value.trim()) {
+                                                            addCity(input.value.trim());
+                                                            input.value = "";
+                                                        }
+                                                    }}
+                                                    disabled={cities.length >= 3}
+                                                    className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                                                >
+                                                    Adicionar
+                                                </button>
+                                            </div>
+                                            <div className="flex flex-col gap-2 mt-2">
+                                                {cities.length === 0 && (
+                                                    <span className="text-xs text-muted-foreground">Se vazio, alertas valem para qualquer cidade consultada.</span>
+                                                )}
+                                                {cities.map((city) => (
+                                                    <div key={city} className="flex items-center justify-between bg-muted/50 px-3 py-2 rounded-lg">
+                                                        <span className="text-sm">{city}</span>
+                                                        <button onClick={() => removeCity(city)} className="text-destructive hover:text-destructive/80 p-1">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </SettingsSection>
 
                             <SettingsSection title="Dados e armazenamento">

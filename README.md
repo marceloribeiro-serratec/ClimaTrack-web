@@ -86,6 +86,7 @@ Crie um arquivo `.env` na raiz do projeto com:
 
 ```bash
 VITE_N8N_WEBHOOK_URL=https://sua-url-do-n8n/webhook
+VITE_N8N_ALERT_WEBHOOK_URL=https://sua-url-do-n8n/webhook-alert
 ```
 
 ## Dados utilizados
@@ -103,6 +104,7 @@ O projeto salva no navegador:
 - Preferencia de tema
 - Unidade de temperatura
 - Identificador local do chat para o webhook do n8n
+- Configurações de alerta climático (e-mail e status de ativação)
 
 ## Navegacao principal
 
