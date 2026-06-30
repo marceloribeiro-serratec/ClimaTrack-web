@@ -5,7 +5,7 @@ interface TelegramAlertPayload {
     cidade: string;
 }
 
-const N8N_WEBHOOK_URL = "http://localhost:5678/webhook-test/cadastrar-alerta";
+const N8N_WEBHOOK_URL = "https://n8n.srv1794183.hstgr.cloud/webhook/cadastrar-alerta";
 
 export async function cadastrarAlertaTelegram(payload: TelegramAlertPayload): Promise<boolean> {
     const response = await fetch(N8N_WEBHOOK_URL, {
