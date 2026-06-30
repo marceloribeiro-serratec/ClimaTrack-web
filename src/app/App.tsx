@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Clock, LayoutDashboard, Settings2, Star, Trash2, Moon, Sun } from "lucide-react";
+import { useState, useEffect, type ReactNode } from "react";
+import { Clock, LayoutDashboard, Settings2, Star, Trash2, Moon, Sun, Bell } from "lucide-react";
 import {
     APP_FONT_FAMILY,
     APP_MONO_FONT_FAMILY,
@@ -19,6 +19,11 @@ import { useTheme } from "./hooks/useTheme";
 import { useTemperatureUnit } from "./hooks/useTemperatureUnit";
 import { useFavorites } from "./hooks/useFavorites";
 import { useSearchHistory } from "./hooks/useSearchHistory";
+import { useAlerts } from "./hooks/useAlerts";
+import { useTelegramAlerts } from "./hooks/useTelegramAlerts";
+import { sendWeatherAlert } from "./services/alert-service";
+import { Switch } from "./components/ui/switch";
+import { Input } from "./components/ui/input";
 import type { GeocodingCity } from "./types/geocoding";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
@@ -43,6 +48,8 @@ export default function App() {
         useFavorites();
     const { history, addSearch, clearHistory, removeSearch } = useSearchHistory();
     const { weather, loading, error, searchByName, searchByCity } = useWeather();
+    const { email, alertsEnabled, lastAlertDateByCity, cities, setEmail, setEnabled, updateLastAlertDate, addCity, removeCity } = useAlerts();
+    const { chatId, setChatId, loadingAlerta, ativarAlertaDiario } = useTelegramAlerts({ weather });
 
     async function handleSearch(city: string) {
         try {
@@ -50,7 +57,7 @@ export default function App() {
             addSearch(result);
             setScreen(DEFAULT_SCREEN);
         } catch {
-            // O estado de erro já é tratado pelo hook.
+            // erro tratado pelo hook.
         }
     }
 
@@ -60,9 +67,54 @@ export default function App() {
             addSearch(result);
             setScreen(DEFAULT_SCREEN);
         } catch {
-            // O estado de erro já é tratado pelo hook.
+            //erro tratado pelo hook.
         }
     }
+
+    useEffect(() => {
+        if (!weather || !alertsEnabled || !email) return;
+
+        const currentHumidity = weather.forecast.current.relative_humidity_2m;
+        const currentTemp = weather.forecast.current.temperature_2m;
+        const today = new Date().toISOString().split("T")[0];
+        const currentCityName = weather.location.name;
+
+        if (cities.length > 0 && !cities.includes(currentCityName)) return;
+        if (lastAlertDateByCity[currentCityName] === today) return;
+
+        let reason: "high_temperature" | "low_temperature" | "high_humidity" | "rain" | null = null;
+
+        const currentCode = weather.forecast.current.weather_code;
+        const isRainingNow = currentCode >= 51 && currentCode <= 99;
+
+        if (currentTemp >= 35) {
+            reason = "high_temperature";
+        } else if (currentTemp <= 10) {
+            reason = "low_temperature";
+        } else if (isRainingNow) {
+            reason = "rain";
+        } else if (currentHumidity >= 90) {
+            reason = "high_humidity";
+        }
+
+        if (reason) {
+            import('./utils/formatWeatherCode').then(({ formatWeatherCode }) => {
+                sendWeatherAlert({
+                    event: "weather_alert",
+                    email,
+                    city: weather.location.name,
+                    reason,
+                    weather: {
+                        temperature: currentTemp,
+                        humidity: currentHumidity,
+                        description: formatWeatherCode(weather.forecast.current.weather_code).label,
+                    }
+                });
+            });
+            updateLastAlertDate(currentCityName);
+            toast.info(`Alerta de clima crítico enviado para ${email}`);
+        }
+    }, [weather, alertsEnabled, email, cities, lastAlertDateByCity, updateLastAlertDate]);
 
     function handleToggleFavorite(city: GeocodingCity) {
         const alreadyFavorite = isFavorite(city);
@@ -110,11 +162,10 @@ export default function App() {
                                 <button
                                     key={item.id}
                                     onClick={() => setScreen(item.id)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                                        screen === item.id
-                                            ? "bg-primary text-primary-foreground shadow-sm"
-                                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                                    }`}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${screen === item.id
+                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                        }`}
                                 >
                                     {item.icon}
                                     {item.label}
@@ -197,11 +248,10 @@ export default function App() {
                                             <button
                                                 key={value}
                                                 onClick={() => setUnit(value)}
-                                                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-150 ${
-                                                    unit === value
-                                                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                                        : "bg-card text-foreground border-border hover:border-primary/40"
-                                                }`}
+                                                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-150 ${unit === value
+                                                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                                    : "bg-card text-foreground border-border hover:border-primary/40"
+                                                    }`}
                                                 style={{ fontFamily: APP_MONO_FONT_FAMILY }}
                                             >
                                                 {value === "C" ? "°C — Celsius" : "°F — Fahrenheit"}
@@ -209,6 +259,136 @@ export default function App() {
                                         ))}
                                     </div>
                                 </div>
+                            </SettingsSection>
+
+                            <SettingsSection title="Notificações diárias">
+                                <div className="p-4 space-y-3">
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                                            <Bell size={16} className="text-primary" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium text-foreground">Previsão Matinal no Telegram</div>
+                                            <div className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                                                Receba o resumo climático da cidade selecionada todos os dias às 8h.
+                                            </div>
+                                            <div className="mt-1">
+                                                <a
+                                                    href="https://t.me/Previsao_n8n_bot"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-primary hover:underline text-xs font-medium inline-flex items-center gap-0.5"
+                                                >
+                                                    Clique aqui para iniciar o Bot ↗
+                                                </a>
+                                            </div>
+                                            <div className="text-xs text-muted-foreground leading-relaxed mt-1">
+                                                Descubra seu ID enviando uma mensagem para o bot <code>@userinfobot</code> no Telegram.
+                                            </div>
+
+                                            {weather?.location?.name ? (
+                                                <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 mt-2">
+                                                    📍 Configurando para: {weather.location.name} ({weather.location.latitude}°, {weather.location.longitude}°)
+                                                </div>
+                                            ) : (
+                                                <div className="text-[11px] font-medium text-amber-600 dark:text-amber-500 mt-2">
+                                                    📍 Nenhuma cidade selecionada na Dashboard (Usando localização padrão)
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <form onSubmit={ativarAlertaDiario} className="flex gap-2 pt-1">
+                                        <input
+                                            type="text"
+                                            placeholder="Digite seu Telegram Chat ID"
+                                            value={chatId}
+                                            onChange={(e) => setChatId(e.target.value)}
+                                            disabled={loadingAlerta}
+                                            className="flex-1 px-3 py-1.5 text-sm rounded-xl border border-border bg-card text-foreground focus:outline-none focus:border-primary transition-all"
+                                        />
+                                        <button
+                                            type="submit"
+                                            disabled={loadingAlerta}
+                                            className="px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 shadow-sm transition-all disabled:opacity-50"
+                                        >
+                                            {loadingAlerta ? "Ativando..." : "Ativar"}
+                                        </button>
+                                    </form>
+                                </div>
+                            </SettingsSection>
+
+                            <SettingsSection title="Alertas Climáticos">
+                                <SettingsRow
+                                    label="Ativar Alertas"
+                                    description="Receba avisos por e-mail sobre clima extremo"
+                                    icon={<Bell size={16} className="text-blue-500" />}
+                                >
+                                    <Switch checked={alertsEnabled} onCheckedChange={setEnabled} />
+                                </SettingsRow>
+                                {alertsEnabled && (
+                                    <div className="px-4 pb-4 pt-2">
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-xs font-medium text-foreground">
+                                                E-mail para alertas
+                                            </label>
+                                            <Input
+                                                type="email"
+                                                placeholder="seu@email.com"
+                                                value={email}
+                                                onChange={(e) => setEmail(e.target.value)}
+                                                className="h-9 text-sm"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5 mt-4">
+                                            <label className="text-xs font-medium text-foreground">
+                                                Cidades para Alerta (máx 3)
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    id="new-city-alert"
+                                                    placeholder="Digite o nome da cidade"
+                                                    className="h-9 text-sm flex-1"
+                                                    disabled={cities.length >= 3}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const val = e.currentTarget.value.trim();
+                                                            if (val) {
+                                                                addCity(val);
+                                                                e.currentTarget.value = "";
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        const input = document.getElementById('new-city-alert') as HTMLInputElement;
+                                                        if (input && input.value.trim()) {
+                                                            addCity(input.value.trim());
+                                                            input.value = "";
+                                                        }
+                                                    }}
+                                                    disabled={cities.length >= 3}
+                                                    className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                                                >
+                                                    Adicionar
+                                                </button>
+                                            </div>
+                                            <div className="flex flex-col gap-2 mt-2">
+                                                {cities.length === 0 && (
+                                                    <span className="text-xs text-muted-foreground">Se vazio, alertas valem para qualquer cidade consultada.</span>
+                                                )}
+                                                {cities.map((city) => (
+                                                    <div key={city} className="flex items-center justify-between bg-muted/50 px-3 py-2 rounded-lg">
+                                                        <span className="text-sm">{city}</span>
+                                                        <button onClick={() => removeCity(city)} className="text-destructive hover:text-destructive/80 p-1">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </SettingsSection>
 
                             <SettingsSection title="Dados e armazenamento">
@@ -273,11 +453,10 @@ export default function App() {
                             <button
                                 key={item.id}
                                 onClick={() => setScreen(item.id)}
-                                className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150 min-w-0 ${
-                                    screen === item.id
-                                        ? "text-primary"
-                                        : "text-muted-foreground"
-                                }`}
+                                className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150 min-w-0 ${screen === item.id
+                                    ? "text-primary"
+                                    : "text-muted-foreground"
+                                    }`}
                             >
                                 {item.icon}
                                 <span className="text-[10px] font-medium truncate">
@@ -287,7 +466,7 @@ export default function App() {
                         ))}
                     </div>
                 </nav>
-                <ChatWidget/>
+                <ChatWidget />
                 <Toaster position="top-right" richColors />
             </div>
         </div>
