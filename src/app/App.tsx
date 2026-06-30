@@ -94,7 +94,7 @@ export default function App() {
             reason = "low_temperature";
         } else if (isRainingNow) {
             reason = "rain";
-        } else if (currentHumidity >= 80) {
+        } else if (currentHumidity >= 90) {
             reason = "high_humidity";
         }
 
